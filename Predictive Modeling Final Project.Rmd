@@ -1,0 +1,1288 @@
+---
+title: "Predictive Modeling Final Project"
+author: "Steven Martinez"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Libraries Function, message = FALSE, warning = FALSE, echo = FALSE, results='hide'}
+LoadLibraries <- function() {
+  library(ISLR2)
+  library(MASS)
+  library(car)
+  library(e1071)
+  library(class)
+  library(boot)
+  library(readr)
+  library(ROSE)
+  library(caret)
+  library(tree)
+  library(randomForest)
+  library(glmnet)
+  library(pls)
+  library(leaps)
+  library(BART)
+  library(gbm)
+  print("The libraries have been loaded.")
+}
+
+LoadLibraries()
+```
+
+# Airline Passenger Satisfaction
+
+## Executive Summary
+
+The primary objective of this analysis was to predict an airline passenger satisfaction based on a set of diverse predictors. Airline passengers were given a satisfaction survey to express their opinions about their flight. The passengers were given a satisfaction survey with various questions and had to answer on a scale from 0 to 5. Just to name a few, some of the questions include how they felt about the inflight WiFi service, ease of online booking, seat comfort, and leg room service.
+
+During our analysis, several predictive models were applied to the dataset, including:
+
+1. Logistic Regression Model
+2. Linear Discriminant Analysis (LDA)
+3. Quadratic Discriminant Analysis (QDA)
+4. K-Nearest Neighbors (KNN)
+5. Classification Tree
+6. Pruning Classification Tree
+7. Bagging
+8. Random Forests
+
+After applying the predictive models, we found that Random Forests demonstrated the highest accuracy among the predictive models employed. Random Forests had an accuracy of $94.5$%. The second best model was bagging. Bagging exhibited an accuracy of $94.29$%, following closely behind Random Forests. Lastly, K-Nearest Neighbors with k=5 secured the third-highest accuracy among the models with $91.13$%.
+
+Comparing the models revealed that ensemble methods, specifically Random Forests and Bagging, outperformed other individual models in predicting passenger satisfaction.
+
+Based on the findings, it is recommended to consider Random Forests as the preferred predictive model for future applications related to passenger satisfaction prediction in the airline industry. Additionally, Bagging and K-Nearest Neighbors with k=5 have demonstrated commendable performance and could be explored further depending on specific requirements.
+
+## Data and Approach
+
+We are interested in predicting passenger `satisfaction` based on multiple predictors. The dataset consists of 25 variables and a total of $103,904$ observations. The names for the variables can be seen below:
+
+```{r Importing dataset, echo=FALSE, results='hide'}
+# Importing the airline data set
+airline <- read.csv("airline.csv")
+
+# Number of rows and columns in the data set
+dim(airline)
+```
+
+```{r Name of columns, echo=FALSE}
+# Column names for data set
+names(airline)
+```
+
+The only variables we will be using are quantitative variables which will be the predictors for predicting passenger `satisfaction`. For that reason we will clean the dataset and remove any qualitative variable except `satisfaction`. All the variables that we will be working with in our analysis can be seen below: 
+
+```{r Removing unnecessary columns, echo=FALSE, results='hide'}
+# Removing unnecessary columns
+airline <- subset(airline, select = -c(X, id, Gender, Customer.Type, Type.of.Travel, Class))
+```
+
+```{r Column names with unecessary columns removed, echo=FALSE}
+# Checking column names again to make sure the columns were removed
+names(airline)
+```
+
+Now we have to check the dataset for any missing values. If there are any missing values, we will remove those rows. The data set has 310 missing values for the variable `Arrival.Delay.in.Minutes`. 
+
+```{r Removing NAs, echo=FALSE, results='hide'}
+# Checking for NA values in the data set
+sum(is.na(airline))
+
+# Removing NA rows from the data set
+airline <- na.omit(airline)
+
+# Rechecking if NA rows were removed
+sum(is.na(airline))
+```
+
+Next, we are going to check the dataset for any outliers it might have. These outliers could have an influence once we start building our models. To find outliers for each column, we have built a function to find outliers within a data set and give us an output of how many outliers were within a column (the function can be found in the *Appendix A1*).
+
+Looking at the results (*Appendix A2*), we can observe that four features have outliers associated with them namely `Flight.Distance`, `Checkin.service`, `Departure.Delay.in.Minutes`, and `Arrival.Delay.in.Minutes`. However, these observed outliers can be entirely possible situations. There could have been very long flights, very long delays in departure or arrival. For the `Checkin.service`, there could have been many passengers who were dissatisfied so there might have been many low ratings. Because all of these scenarios are possible, it is advisable to not remove the outliers because they might give important information about the data.
+
+Currently `satisfaction` is classified as a character type, so we have to change `satisfaction` to a factor type in order to fit any model (*Appendix A3*). After `satisfaction` was changed to a factor type, we see that the values for `satisfaction` were given a $0$ for `neutral or dissatisfied` and $1$ for `satisfied` (*Appendix A4*).  
+
+```{r factor, echo=FALSE, results='hide'}
+# Changing the satisfaction variable to a factor type
+airline$satisfaction <- as.factor(airline$satisfaction)
+
+# Checking to see if the type was changed to a factor type
+class(airline$satisfaction)
+```
+
+Now we are ready to create our models.
+
+## Detailed Findings
+
+We will start by fitting a logistic regression model (*Appendix A5*) in order to predict `satisfaction` using all 18 variables as the predictors. Below we can see the plots that are produced from the logistic regression model.
+
+```{r GLM, echo=FALSE}
+attach(airline)
+
+# Training and test sets using validation set approach
+set.seed(1)
+train <- sample(1:(length(satisfaction) / 2))
+test <- (-train)
+airline_train <- airline[train, ]
+airline_test <- airline[test, ]
+
+# Fitting logistic regression model using the training set
+glm_airline_fits <- glm(satisfaction ~ .,
+                data = airline_train,
+                family = binomial,
+                )
+```
+
+```{r, echo=FALSE}
+par(mfrow = c(2,2)) ; plot(glm_airline_fits)
+```
+
+Taking a look at the *Q-Q Residuals* plot, the logistic regression models starts off great but then starts curving up away. The reason why this happens is because we have some influential points in the dataset. The influential points can be seen in the *Residuals vs Leverage* plot, where multiple points appear to be influential and one that is heavily influential. However, after utilizing our testing set to make predictions (*Appendix A6*), we see that the logistic regression model did a good job in predicting passenger satisfaction. Below we can see the confusion matrix and the accuracy of the logistic regression is $83.13$%. This is really good considering that we had various points to be influential.
+
+```{r GLM Confusion Matrix, echo=FALSE}
+# Making predictions on the testing set
+glm_airline_predictions <- predict(glm_airline_fits, airline_test, type = "response")
+
+# Convert predicted probabilities to binary predictions (0 or 1)
+glm_airline_predicted_class <- ifelse(glm_airline_predictions > 0.5, 1, 0)
+
+# Confusion matrix on the testing set
+glm_airline_confusion_matrix <- table(glm_airline_predicted_class, airline_test$satisfaction)
+glm_airline_confusion_matrix
+```
+
+```{r GLM Accuracy, echo=FALSE}
+# Accuracy of the logistic regression model
+glm_airline_accuracy <- sum(diag(glm_airline_confusion_matrix)) / sum(glm_airline_confusion_matrix)
+glm_airline_accuracy
+```
+
+Next we will be moving to a linear discriminant analysis model (*Appendix A7*). 
+
+```{r LDA, echo=FALSE, results='hide'}
+# Fitting linear discriminant analysis model using the training set
+lda_airline_fit <- lda(satisfaction ~ ., data = airline_train)
+lda_airline_fit
+```
+
+Looking at the LDA fit in *Appendix A7* we see that $56.48$% of the observations in the training set were neutral or dissatisfied passengers and $43.52$% were satisfied. The predictions on the testing set resulted in similar results to the logistic regression model. Comparing the LDA and logistic regression confusion matrix, the LDA model only had 121 less corrected predictions for dissatisfied and 52 more correct predictions for satisfied than the logistic regression model. The accuracy for the LDA model is about $83$%.
+
+```{r LDA Confusion Matrix, echo=FALSE}
+# Making predictions on the testing set
+lda_airline_predictions <- predict(lda_airline_fit, airline_test)
+
+# Confusion matrix on the testing set
+lda_airline_confusion_matrix <- table(lda_airline_predictions$class, airline_test$satisfaction)
+lda_airline_confusion_matrix
+```
+
+```{r LDA Accuracy, echo=FALSE}
+# Accuracy of the LDA model
+lda_airline_accuracy <- sum(diag(lda_airline_confusion_matrix)) / sum(lda_airline_confusion_matrix)
+lda_airline_accuracy
+```
+
+The next model we will be looking at is a quadratic discriminant analysis model (*Appendix A9*).
+
+```{r QDA, echo=FALSE, results='hide'}
+# Fitting quadratic discriminant analysis model using the training set
+qda_airline_fit <- qda(satisfaction ~ ., data = airline_train)
+qda_airline_fit
+```
+
+The QDA performs similar to the logistic and LDA models. Below we can see that the confusion matrix for the QDA model is similar to the previous models. However, the accuracy for QDA is slightly better than the previous models at $83.52$%. This level of accuracy is good but we will keep exploring for better options.
+
+```{r QDA confusion matrix, echo=FALSE}
+# Making predictions on the testing set
+qda_airline_predictions <- predict(qda_airline_fit, airline_test)
+
+# Confusion matrix on the testing set
+qda_airline_confusion_matrix <- table(qda_airline_predictions$class, airline_test$satisfaction)
+qda_airline_confusion_matrix
+```
+
+```{r QDA accuracy, echo=FALSE}
+# Accuracy of the model
+qda_airline_accuracy <- sum(diag(qda_airline_confusion_matrix)) / sum(qda_airline_confusion_matrix)
+qda_airline_accuracy
+```
+
+We will now move on to a K-Nearest Neighbor model (*Appendix A10*). Before fitting a KNN model, we have to standardized our data. The reason why we must first standardized the dataset is because k-NN relies on the concept of measuring distances between data points to determine neighbors. Features with larger scales may dominate the distance calculations, leading to biased results. Standardizing ensures that all features contribute equally to the distance metric. A predictor like `Flight.Distance` whose values are going to be very large compare to the other predictor, can have a heavy influence in a KNN model.
+
+```{r KNN, echo=FALSE, results='hide'}
+# Standardizing the airline data because predictors like Flight.Distance and other will have an influence in the model
+standardized_airline <- scale(airline[, -19])
+
+# Training and test sets using validation set approach
+set.seed(1)
+train <- sample(1:(length(satisfaction) / 2))
+test <- (-train)
+airline_train_X <- standardized_airline[train, ]
+airline_test_X <- standardized_airline[test, ]
+
+airline_train_Y <- satisfaction[-test]
+airline_test_Y <- satisfaction[test]
+
+# Making predictions with k=1
+set.seed(3)
+knn_airline_predictions <- knn(airline_train_X, airline_test_X, airline_train_Y, k = 1)
+```
+
+Looking at the results for the KNN model when $k = 1$, the results are much better than all the previous models. Below we can see the numbers of incorrect predictions in the confusion matrix has gone down compared to the other models. The prediction accuracy for this KNN model with $k = 1$ is $89.72$%. This is more than a $6$% increase compared to QDA which was previously the best model we had.
+
+```{r KNN confusion and accuracy k1, echo=FALSE}
+# Confusion matrix on the testing set
+knn_airline_confusion_matrix <- table(knn_airline_predictions, airline_test_Y)
+knn_airline_confusion_matrix
+
+# Accuracy of the model
+knn_airline_accuracy <- mean(airline_test_Y == knn_airline_predictions)
+knn_airline_accuracy
+```
+
+KNN worked really well with $k = 1$, but lets try to fit another KNN model but with $k = 5$ (*Appendix A11*). Looking at the results for when $k = 5$, the results are even better. Here the prediction accuracy is $91.13$%! This is by the best model we have fitted so far.
+
+```{r KNN k5, echo=FALSE,}
+# Making predictions with k=5
+set.seed(3)
+knn_airline_predictions_5 <- knn(airline_train_X, airline_test_X, airline_train_Y, k = 5)
+
+# Confusion matrix on the testing set
+knn_airline_confusion_matrix_5 <- table(knn_airline_predictions_5, airline_test_Y)
+knn_airline_confusion_matrix_5
+
+# Accuracy of the model
+knn_airline_accuracy_5 <- mean(airline_test_Y == knn_airline_predictions_5)
+knn_airline_accuracy_5
+```
+
+Now we will be moving on to a Classification Tree Model (*Appendix A12*).
+
+```{r Classification tree, echo=FALSE}
+# Fitting Classification Tree
+tree_airline <- tree(satisfaction ~ ., airline)
+
+# Plot of classification tree
+plot(tree_airline) ; text(tree_airline, pretty = 0, cex = 0.6)
+```
+
+It seems that the most important indicator of `satisfaction` appears to be `Online.boarding`, we can see that by the first branch of the tree. The surveys the passengers took where based on a scale from $0$ to $5$. Looking at the first branch, if a passenger had a score lower than a 3.5 for `Online.boarding` they were dissatisfied and went on to the left side of the tree. On the other hand, if a passenger had a score higher than a 3.5 for `Online.boarding`, they were satisfied and went on to the right side of the tree.
+
+Looking at the summary of the classification tree below, we see that the training error is $14.15$% and a residual mean deviance of $64.78$%. A small deviance indicates a tree that provides a good fit to the data. Our deviance is a little high, so in order to properly evaluate the performance of a classification tree on the data set, we must estimate the test error rather than simply computing the training error. We split the observations into a training set and a test set, build the tree using the training set, and evaluate its performance on the test data.
+
+```{r tree summary, echo=FALSE}
+summary(tree_airline)
+```
+
+We will now build a tree using the training set (*Appendix A13*).
+
+```{r Trained tree, echo=FALSE, results='hide'}
+set.seed(2)
+tree_train <- sample(1:(length(satisfaction) / 2))
+tree_test <- (-tree_train)
+
+# Creating training and testing set
+airline_tree_train <- airline[tree_train, ]
+airline_tree_test <- airline[tree_test, ]
+
+# Fitting tree model on the training set
+tree_airline <- tree(satisfaction ~ ., data = airline_tree_train)
+
+# Making predictions on the testing set
+tree_airline_predictions <- predict(tree_airline, airline_tree_test, type = "class")
+```
+
+Below we can see the classification tree has a prediction accuracy of $85.91$% on the test data set. This is slightly better than the linear regression, LDA, and QDA models.
+
+```{r, echo=FALSE}
+# Confusion matrix on the testing set
+tree_airline_confusion_matrix <- table(tree_airline_predictions, airline_tree_test$satisfaction)
+tree_airline_confusion_matrix
+
+# Accuracy of the tree model
+tree_airline_accuracy <- sum(diag(tree_airline_confusion_matrix)) / sum(tree_airline_confusion_matrix)
+tree_airline_accuracy
+```
+
+Next, we will be considering if pruning the tree might lead to improve results. When pruning the tree, we will perform cross-validation (*Appendix A14*) in order to determine the optimal level of tree complexity.
+
+```{r CV tree, echo=FALSE}
+set.seed(2)
+cv_tree_airline <- cv.tree(tree_airline, FUN = prune.misclass)
+
+plot(cv_tree_airline$size, cv_tree_airline$dev, type = "b") 
+```
+
+In the figure above we can see that the trees with 11 and 8 terminal nodes both have the same cross-validation errors. Having too many terminal nodes can lead to overfitting, where the model captures noise in the training data and doesn't generalize well to new, unseen data. For that reason, we will choose the tree with 8 terminal nodes which we can see below.
+
+```{r Prune Tree, echo=FALSE}
+prune_airline <- prune.misclass(tree_airline, best = 8)
+plot(prune_airline) ; text(prune_airline, pretty = 0, cex = 0.6)
+```
+
+After pruning the tree we obtain the same prediction accuracy of $85.91$% like we did previously, but the pruning process has produced a more interpretable tree.
+
+```{r Prune tree accuracy, echo=FALSE}
+prune_airline_predictions <- predict(prune_airline, airline_tree_test, type = "class")
+
+prune_airline_confusion_matrix <- table(prune_airline_predictions, airline_tree_test$satisfaction)
+prune_airline_confusion_matrix
+
+prune_airline_accuracy <- sum(diag(prune_airline_confusion_matrix)) / sum(prune_airline_confusion_matrix)
+prune_airline_accuracy
+```
+
+We will proceed to a bagging model (*Appendix A15*). The bagging model is going to consider all 18 predictors for each split of the tree. After creating the bagging model, we will calculate the accuracy of correct predictions to see how well the bagged model performed.
+
+```{r Bagging, echo=FALSE}
+# Creating bagged model
+set.seed(2)
+bag_airline <- randomForest(satisfaction ~ .,
+                            data = airline_train,
+                            mtry = 18,
+                            importance = TRUE)
+
+# Bagging predictions on testing set
+bag_airline_predictions <- predict(bag_airline, airline_test)
+```
+
+```{r Bagging accuracy, echo=FALSE}
+# Confusion matrix on the testing set
+bag_airline_confusion_matrix <- table(bag_airline_predictions, airline_test$satisfaction)
+bag_airline_confusion_matrix
+
+# Accuracy of the tree model
+bag_airline_accuracy <- sum(diag(bag_airline_confusion_matrix)) / sum(bag_airline_confusion_matrix)
+bag_airline_accuracy
+```
+
+The bagging model performs incredibly, the prediction accuracy is $94.29$%! This is higher than all the previous models that had so far.
+
+There is one last model that we will consider before making our final decision. This next model we will be using random forests (*Appendix A16*).
+
+```{r Random Forest, echo=FALSE}
+# Creating random forests
+set.seed(2)
+rf_airline <- randomForest(satisfaction ~ ., data = airline_train, mtry = 3, importance = TRUE)
+
+# Random forests predictions on testing set
+rf_airline_predictions <- predict(rf_airline, airline_test)
+```
+
+```{r Random Forest accuracy, echo=FALSE}
+# Confusion matrix on the testing set
+rf_airline_confusion_matrix <- table(rf_airline_predictions, airline_test$satisfaction)
+rf_airline_confusion_matrix
+
+# Accuracy of the tree model
+rf_airline_accuracy <- sum(diag(rf_airline_confusion_matrix)) / sum(rf_airline_confusion_matrix)
+rf_airline_accuracy
+```
+
+The random forests also perform incredible well. The prediction accuracy for random forests is $94.5$% which is similar to bagging.
+
+## Validity and Reliability Assessment
+
+In the context of the predictive models for airline passenger satisfaction, several aspects of validity are considered. First, the selection of predictors in the models was based on a thorough understanding of factors influencing passenger satisfaction within the airline industry. The models were designed to predict passenger satisfaction, a construct deemed essential for evaluating airline services. We used various models to allow for comparisons and identification of the most accurate predictors.
+
+Reliability pertains to the consistency and stability of findings over repeated measurements or applications. In the analysis of airline passenger satisfaction predictive models, cross-validation techniques were employed to assess the stability and consistency of model performance. Also, the dataset was split into training and testing sets, ensuring that the models were tested on independent data to evaluate generalization.
+
+However, ongoing monitoring and validation efforts are recommended to ensure the continued relevance and accuracy of the predictive models in the dynamic context of the airline industry.
+
+# NBA Player Salaries 2022-2023 Season
+
+## Executive Summary
+
+The goal of this data science project was to predict NBA player salaries for the 2022-2023 season based on a comprehensive set of predictors. The dataset included NBA player statistics and corresponding salaries for the specified season.
+
+Multiple predictive models were fitted to the data to identify the most accurate and robust model for salary prediction. The following models were employed:
+
+1. Least Squares Linear Model
+2. Best Subset Selection
+3. Forward Selection
+4. Backward Selection
+5. Ridge Regression
+6. Lasso Regression
+7. Partial Least Squares
+8. Regression Tree
+9. Pruning Regression Tree
+10. Bagging
+11. Random Forests
+12. Boosted Regression Tree
+13. Principal Component Regression
+
+After rigorous analysis and model evaluation, the top-performing models in terms of accuracy were identified. The results are as follows:
+
+1. Regression Tree: This model demonstrated the highest accuracy in predicting NBA player salaries for the 2022-2023 season.
+
+2. Lasso Regression: Following closely, the Lasso Regression model proved to be another effective predictor of player salaries.
+
+3. Backward Selection: This model, despite being simpler in approach, exhibited notable accuracy in salary prediction.
+
+Based on the findings, the Regression Tree model is recommended for predicting NBA player salaries due to its superior accuracy. However, it is advisable to consider Lasso Regression and Backward Selection models as viable alternatives, depending on specific requirements or constraints.
+
+## Data and Approach
+
+This dataset is about player per-game statistics for the NBA's 2022-23 season with player salary data, creating a comprehensive resource for understanding the performance and financial aspects of professional basketball players. We are interested in predicting player `Salary` based on their performance. The data set consists of 467 observations and 32 variables.
+
+```{r, echo=FALSE, results='hide'}
+# NBA data set from 2022-2023 season
+nba_salaries <- read.csv("nba_salaries.csv")
+
+# Number of rows and columns in the data set
+dim(nba_salaries)
+
+# Column names for data set
+names(nba_salaries)
+```
+
+Looking at the data set, there are a lot of unecessary variables. Again, we are only interested in predicting player salary based on their performance, so for this reason we will be removing some the qualitative variables.
+
+Other than the qualitative variables that we will be removing, there are other variables that will need to be removed because they will have influence in our predictive models that we don't want. For example, the variable field goals made (`FG`) and field goals attempted (`FGA`) are highly correlated. This makes sense because the more shots a player takes, the more shots they will make. We can calculate the correlation between `FG` and `FGA` and see that it's $0.978$, which is incredibly high. 
+
+```{r, echo=FALSE}
+cor(nba_salaries$FGA, nba_salaries$FG)
+```
+
+In the case of NBA player stats, field goal percentage (`FG.`), which is calculated by field goals made divided by field goal attempts, is a common metric that captures shooting efficiency. Field goal percentage is a better metric, so for that reason we can get rid off `FG` and `FGA`.
+
+We can also remove `X3P`, `X3PA`, `X2P`, `X2PA`, `FT`, and `FTA`. They are similar to the field goal scenario except these are for three point field goals, two point field goals, and free throws.
+
+```{r, echo=FALSE, results='hide'}
+# Removing unecessary variables in data set
+nba_salaries <- subset(nba_salaries, select = -c(Position, Team, Player.additional, X, Player.Name,
+                                                 FG, FGA, X3P, X3PA, X2P, X2PA, FT, FTA))
+
+# Checking column names again to make sure the columns were removed
+names(nba_salaries)
+```
+
+Next we have to check if there are any NA values in the data set and removed them. The dataset has a total of $42$ NA values. We will remove them which will then decrease the dataset observations to $433$.
+
+```{r, echo=FALSE, results='hide'}
+# Checking for NA values in the data set
+sum(is.na(nba_salaries))
+
+# Removing NA rows from the data set
+nba_salaries <- na.omit(nba_salaries)
+
+# Rechecking if NA rows were removed
+sum(is.na(nba_salaries))
+```
+
+There are some outliers in the NBA salaries data set (*Appendix B1*). However, we will keep them because they are valuable to the data. There are players who earned much more than the rest of the players because they are the stars of the NBA. There are always players in sports who are the best in their sports and their stats are above average and their salaries are higher. Keeping this data is important to be able to try to predict a future player's salary with similar stats.
+
+```{r, echo=FALSE, results='hide', eval=FALSE}
+nba_outliers <- find_outliers(nba_salaries)
+nba_outliers
+```
+
+Now we are ready to create our models.
+
+## Detailed Findings
+
+We will start off by splitting the data set into a training set and a test set. The we will first fit a linear model using least squares on the training set (*Appendix B2*).
+
+```{r, echo=FALSE}
+attach(nba_salaries)
+set.seed(2)
+
+# Training and test sets
+train <- sample(1:(length(Salary) / 2))
+train_data <- nba_salaries[train, ]
+test_data <- nba_salaries[-train, ]
+
+# Fitting least squares model
+lm_nba <- lm(Salary ~ ., data = train_data)
+
+# Making predictions on the test set
+lm_nba_pred <- predict(lm_nba, test_data)
+
+# MSE for least squares
+MSE_lm <- mean((lm_nba_pred - test_data$Salary)^2)
+MSE_lm
+```
+
+```{r, echo=FALSE}
+par(mfrow = c(2,2)) ; plot(lm_nba)
+```
+
+After applying a least squares linear model on all $18$ predictors in the data set, we get a MSE of $4.737102e+13$. The *Residual vs Fitted* plot above shows that the least squares linear model is doing a good job fitting the data since there are no patterns in the residual plot. The *Q-Q Residuals* and the *Residuals vs Leverage* plots tell us the there are some points that are influencing the model. This is expected because we did not remove the outliers from the data. Once again, we did not remove them because there are players who are all-stars in the NBA and for that their salaries will be higher but their data is still important.
+
+The next model we are going to fit is Best Subset Selection (*Appendix B3*).
+
+```{r, echo=FALSE, results='hide'}
+set.seed(3)
+# Subset selection function
+predict.regsubsets <- function(object, newdata, id, ...) {
+    form <- as.formula(object$call[[2]])
+    mat <- model.matrix(form, newdata)
+    coefi <- coef(object, id = id)
+    xvars <- names(coefi)
+    mat[, xvars] %*% coefi
+}
+
+k = 5
+
+folds <- sample(1:k, nrow(nba_salaries), replace = TRUE)
+
+cv_errors <- matrix(NA, k, 18, dimnames = list(NULL, paste(1:18)))
+
+for (j in 1:k) {
+    best.fit <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18)
+    for (i in 1:18) {
+        pred <- predict(best.fit, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+mean_cv_errors <- apply(cv_errors, 2, mean)
+mean_cv_errors
+```
+
+```{r, echo=FALSE}
+plot(mean_cv_errors, type = "b", xlab = "Number of variables", ylab = "CV error", main= "Best subset selection")
+```
+
+Looking at the best subset selection plot, we can see that the best subset is with $12$ variables. The MSE for the $12$ variable subset is $4.254288e+13$ (*Appendix B3*), which is an improvement over the least squares linear model who had a MSE of $4.737102e+13$. In *Appendix B4* we can see which were the $12$ variables that were selected in the subset.
+
+We will now try forward selection and see how many variables we would get (*Appendix B5*).
+
+```{r, echo=FALSE, results='hide'}
+for (j in 1:k) {
+    best.forward <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18, method = "forward")
+    for (i in 1:18) {
+        pred <- predict(best.forward, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+forward_mean_cv_errors <- apply(cv_errors, 2, mean)
+forward_mean_cv_errors
+```
+
+```{r, echo=FALSE}
+plot(forward_mean_cv_errors, type = "b", xlab = "Number of variables", ylab = "CV error", main= "Forward selection")
+```
+
+Looking at the forward selection plot, we can see that the best subset is with $13$ variables. The MSE for the $13$ variable subset is $4.245331e+13$ (*Appendix B5*), which is a slight improvement over best subset selection with one more variable.
+
+Let's look at backward selection now (*Appendix B6*).
+
+```{r, echo=FALSE, results='hide'}
+for (j in 1:k) {
+    best.backward <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18, method = "backward")
+    for (i in 1:18) {
+        pred <- predict(best.backward, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+backward_mean_cv_errors <- apply(cv_errors, 2, mean)
+backward_mean_cv_errors
+```
+
+```{r, echo=FALSE}
+plot(backward_mean_cv_errors, type = "b", xlab = "Number of variables", ylab = "CV error", main= "Backward selection")
+```
+
+With backwards selection, once again we see that the best subset is $13$ variables. The MSE for backwards selection is $4.244937e+13$ (*Appendix B6*), which is practically the same as forwards selection.
+
+Next we will fit a ridge regression model (*Appendix B7*).
+
+```{r, echo=FALSE, results='hide'}
+# Train and test matrix
+train.mat <- model.matrix(Salary ~ ., data = train_data)
+test.mat <- model.matrix(Salary ~ ., data = test_data)
+
+# Lambda grid
+grid <- 10 ^ seq(10, -2, length = 60)
+
+# Fitting ridge on training set
+fit.ridge <- glmnet(train.mat, train_data$Salary, alpha = 0, lambda = grid, thresh = 1e-12)
+cv.ridge <- cv.glmnet(train.mat, train_data$Salary, alpha = 0, lambda = grid, thresh = 1e-12)
+
+# Choosing best lambda value
+bestlam.ridge <- cv.ridge$lambda.min
+bestlam.ridge
+
+# Prediction using ridge on test matrix
+pred.ridge <- predict(fit.ridge, s = bestlam.ridge, newx = test.mat)
+
+# MSE for ridge
+MSE_ridge <- mean((pred.ridge - test_data$Salary)^2)
+MSE_ridge
+```
+
+The ridge regression model gives us a MSE of $4.432261e+13$ (*Appendix B7*) which is higher than the previous models.
+
+Now we will move on to a lasso regression model (*Appendix B8*).
+
+```{r, echo=FALSE, results='hide'}
+# Fitting lasso on training set
+fit.lasso <- glmnet(train.mat, train_data$Salary, alpha = 1, lambda = grid, thresh = 1e-12)
+cv.lasso <- cv.glmnet(train.mat, train_data$Salary, alpha = 1, lambda = grid, thresh = 1e-12)
+
+# Choosing best lambda value
+bestlam.lasso <- cv.lasso$lambda.min
+bestlam.lasso
+
+# Prediction using lasso on test matrix
+pred.lasso <- predict(fit.lasso, s = bestlam.lasso, newx = test.mat)
+
+# MSE for lasso
+MSE_lasso <- mean((pred.lasso - test_data$Salary)^2)
+MSE_lasso
+```
+
+The lasso regression model gives us a MSE of $4.149899e+13$ (*Appendix B8*). This is the best MSE we have seen so far. This is not a surprise because the key aspect of lasso regression is that it tends to push the coefficients of less important features to exactly zero, effectively performing feature selection. Lasso can help prevent overfitting and identify the most important features for prediction.
+
+Previously the best subset selection gave us a model with $13$ predictors. Forward and backward selection both gave us a model with $12$ predictors. The lasso model however, chose a model with $7$ predictors and pushed the coefficients of the other predictors to zero. We can see the results in *Appendix B9*.
+
+Let's move on to a partial least squares model (*Appendix B10*).
+
+```{r, echo=FALSE, results='hide'}
+# Fitting pls on training set
+fit.pls <- plsr(Salary ~ ., data = train_data, scale = TRUE, validation = "CV")
+
+# Looking at how many segments were used
+fit.pls
+
+# Prediction using test set
+pred.pls <- predict(fit.pls, test_data, ncomp = 10)
+
+# MSE for PLS
+MSE_pls <- mean((pred.pls - test_data$Salary)^2)
+MSE_pls
+```
+
+The partial least squares regression chose 10 components and we got a MSE of $4.575335e+13$ (*Appendix B10*). This is higher than some of the previous models we have seen so far. The best model still appears to be the lasso regression.
+
+Next we will be looking at a regression tree model (*Appendix B11*).
+
+```{r, echo=FALSE, results='hide'}
+# Regression tree model on training set
+tree_nba <- tree(Salary ~ ., data = train_data)
+
+summary(tree_nba)
+```
+
+Looking at the summary of the regression tree (*Appendix B11*), there were 9 variables that were used in the construction of the tree. The most important predictors were points, defensive rebounds, and age in that order. The tree overall has 15 terminal nodes. Below we can see the regression tree and clearly see the most important predictor is points.
+
+```{r, echo=FALSE}
+plot(tree_nba) ; text(tree_nba, pretty = 0, cex = 0.6)
+```
+
+We then found the test MSE to see how well the tree regression model fits (*Appendix B12*). The test MSE here is $4.602669e+12$, which is by far the best MSE we have gotten from all of our models. A regression tree seems to be fitting really well.
+
+```{r, echo=FALSE, results='hide'}
+# Test MSE
+tree.pred <- predict(tree_nba, test_data)
+MSE_tree <- mean((tree.pred = test_data$Salary)^2)
+MSE_tree
+```
+
+Now we will use cross-validation in order to determine the optimal level of tree complexity (*Appendix B13*). The plot below shows that the cross validation error is lowest for a tree with 12 terminal nodes. The full tree can now be pruned to obtain the 12 node tree.
+
+```{r, echo=FALSE}
+# CV on regression tree
+cv_tree_nba <- cv.tree(tree_nba)
+
+plot(cv_tree_nba$size, cv_tree_nba$dev, xlab = "Terminal Nodes", ylab = "CV Error", type = "b", main = "Regression Tree CV")
+```
+
+After pruning, we can calculate the test MSE (*Appendix B14*). For the prune tree the test MSE is $7.970202e+13$ which is the highest MSE we have obtain from all the models we have fitted so far. It seems like the prune tree will not be the model we will be selecting to predict a player's salary.
+
+```{r, echo=FALSE, results='hide'}
+prune_nba <- prune.tree(tree_nba, best = 12)
+plot(prune_nba) ; text(prune_nba, pretty = 0, cex = 0.6)
+```
+
+The next model we will fit is bagging (*Appendix B15*). After fitting the bagging model, we received a test MSE of $7.570461e+13$. This MSE is lower than the prune tree but much higher than some of the previous models we have fitted so far. Thus, we will continue to search for other models.
+
+```{r, echo=FALSE, results='hide'}
+# Fitting bagging on training set
+bag_nba <- randomForest(Salary ~ ., data = train_data, mtry = 18, ntree = 500, importance = TRUE)
+
+# Test MSE
+yhat.bag <- predict(bag_nba, newdata = test_data)
+MSE_bag <- mean((yhat.bag - test_data$Salary)^2)
+MSE_bag
+```
+
+The next model we will look at is random forests (*Appendix B16*). The test MSE here is $7.489931e+13$ which once again is too high compare to previous models. 
+
+```{r, echo=FALSE, results='hide'}
+# Random Forests on training set
+rf_nba <- randomForest(Salary ~ ., data = train_data, mtry = 18, ntree = 500, importance = TRUE)
+
+# Test MSE
+yhat.rf <- predict(rf_nba, newdata = test_data)
+MSE_rf <- mean((yhat.rf - test_data$Salary)^2)
+MSE_rf
+```
+
+We will now move on to a boosted regression tree model (*Appendix B17*). The test MSE obtained in the boosted model is $5.431792e+13$, this is still not good enough compare to previous models.
+
+```{r, echo=FALSE, results='hide'}
+# Boosted regression tree
+boost_nba <- gbm(Salary ~ ., data = train_data, distribution = "gaussian", n.trees = 5000, interaction.depth = 4)
+
+# Test MSE
+yhat.boost <- predict(boost_nba, newdata = test_data, n.trees = 500)
+MSE_boost <- mean((yhat.boost - test_data$Salary)^2)
+MSE_boost
+```
+
+The last model we will be looking at is a principal components regression model (*Appendix B18*). Looking at the validation plot, we see that the lowest cross-validation error occurs when we have $13$ components. We will compute the test MSE for $13$ components (*Appendix B19*).
+
+```{r, echo=FALSE}
+set.seed(2)
+
+# PCR on training set
+pcr.fit <- pcr(Salary ~ ., data = train_data, scale = TRUE, validation = "CV")
+
+# PCR Validation plot
+validationplot(pcr.fit, val.type = "MSEP")
+```
+
+The test MSE for PCR is $4.514261e+13$, which is close to some of the other previous models that we had.
+
+```{r, echo=FALSE, results='hide'}
+# Test MSE
+pred.pcr <- predict(pcr.fit, test_data, ncomp = 13)
+MSE_pcr <- mean((pred.pcr - test_data$Salary)^2)
+MSE_pcr
+```
+
+## Validity and Reliability Assessment
+
+In this analysis, the use of multiple predictive models, including traditional statistical methods and machine learning algorithms, enhances the internal validity. The inclusion of diverse models ensures a comprehensive examination of predictors, increasing the robustness of the findings. However, the validity of this analysis may be influenced by the specificity of the NBA dataset used for the 2022-2023 season. It is crucial to acknowledge that player performance and salary dynamics can vary across seasons and leagues. Therefore, caution is advised when generalizing the findings to different contexts. Also, the selection of relevant player statistics as predictors aligns with the theoretical underpinnings of salary determination in professional sports. However, ongoing changes in the game or emerging factors may not be fully captured, potentially impacting construct validity.
+
+The reliability of predictive models is a key consideration. The use of a wide range of models, from traditional linear models to complex ensemble methods, contributes to a comprehensive reliability assessment. The consistency of results across multiple models, especially the top-performing Regression Tree, Lasso Regression, and Backward Selection models, indicates a degree of reliability in predicting NBA player salaries.
+
+The application of cross-validation techniques, such as k-fold cross-validation, helps assess the stability and generalization of the models. Cross-validation provides insights into how well the models perform on new, unseen data, reducing the risk of overfitting and improving the reliability of the predictive capabilities.
+
+While the analysis demonstrates strong internal validity through the use of diverse models and predictors, caution is advised in generalizing findings externally to different seasons or leagues. The reliability of the models, especially the top-performing ones, suggests confidence in their predictive capabilities. Continuous monitoring and validation against new data will further strengthen the reliability of the NBA player salary predictions.
+
+# Appendix A
+
+### Libraries
+```{r Libraries, warning=FALSE, message=FALSE, results='hide', eval=FALSE}
+LoadLibraries <- function() {
+  library(ISLR2)
+  library(MASS)
+  library(car)
+  library(e1071)
+  library(class)
+  library(boot)
+  library(readr)
+  library(ROSE)
+  library(caret)
+  library(tree)
+  library(randomForest)
+  library(glmnet)
+  library(pls)
+  library(leaps)
+  library(BART)
+  library(gbm)
+  print("The libraries have been loaded.")
+}
+
+LoadLibraries()
+```
+
+### A1
+```{r Finding outliers function, eval=FALSE}
+########### Finding outliers function ###########
+
+find_outliers <- function(data, threshold = 1.5) {
+  # Initialize an empty list to store outlier counts for each column
+  outlier_counts <- list()
+  
+  # Loop through each column in the data
+  for (col in names(data)) {
+    # Calculate the IQR for the column
+    iqr <- IQR(data[[col]])
+    
+    # Determine the upper and lower bounds for outliers
+    upper_bound <- quantile(data[[col]], 0.75) + threshold * iqr
+    lower_bound <- quantile(data[[col]], 0.25) - threshold * iqr
+    
+    # Identify outliers in the column
+    outliers <- data[[col]] > upper_bound | data[[col]] < lower_bound
+    
+    # Count the number of outliers in the column
+    outlier_counts[[col]] <- sum(outliers)
+  }
+  
+  # Return the list of outlier counts
+  return(outlier_counts)
+}
+```
+
+### A2
+```{r Outliers in airline data set, eval=FALSE}
+airline_outliers <- find_outliers(airline[, -19])
+airline_outliers
+```
+
+### A3
+```{r Satisfaction to factor, eval=FALSE}
+# Changing the satisfaction variable to a factor type
+airline$satisfaction <- as.factor(airline$satisfaction)
+
+# Checking to see if the type was changed to a factor type
+class(airline$satisfaction)
+```
+
+### A4
+```{r Values given to satisfaction, eval=FALSE}
+# The given values for the satisfaction column
+contrasts(airline$satisfaction)
+```
+
+### A5
+```{r Logistic Regression Model, eval=FALSE}
+attach(airline)
+
+# Training and test sets using validation set approach
+set.seed(1)
+train <- sample(1:(length(satisfaction) / 2))
+test <- (-train)
+airline_train <- airline[train, ]
+airline_test <- airline[test, ]
+
+# Fitting logistic regression model using the training set
+glm_airline_fits <- glm(satisfaction ~ .,
+                data = airline_train,
+                family = binomial,
+                )
+```
+
+### A6
+```{r GLM confusion_accuracy, results='hide', eval=FALSE}
+# Making predictions on the testing set
+glm_airline_predictions <- predict(glm_airline_fits, airline_test, type = "response")
+
+# Convert predicted probabilities to binary predictions (0 or 1)
+glm_airline_predicted_class <- ifelse(glm_airline_predictions > 0.5, 1, 0)
+
+# Confusion matrix on the testing set
+glm_airline_confusion_matrix <- table(glm_airline_predicted_class, airline_test$satisfaction)
+glm_airline_confusion_matrix
+
+# Accuracy of the linear regression model
+glm_airline_accuracy <- sum(diag(glm_airline_confusion_matrix)) / sum(glm_airline_confusion_matrix)
+glm_airline_accuracy
+```
+
+### A7
+```{r LDA Model, eval=FALSE}
+# Fitting linear discriminant analysis model using the training set
+lda_airline_fit <- lda(satisfaction ~ ., data = airline_train)
+lda_airline_fit
+```
+
+### A8
+```{r LDA confusion_accuracy, results='hide', eval=FALSE}
+# Making predictions on the testing set
+lda_airline_predictions <- predict(lda_airline_fit, airline_test)
+
+# Confusion matrix on the testing set
+lda_airline_confusion_matrix <- table(lda_airline_predictions$class, airline_test$satisfaction)
+lda_airline_confusion_matrix
+
+# Accuracy of the LDA model
+lda_airline_accuracy <- sum(diag(lda_airline_confusion_matrix)) / sum(lda_airline_confusion_matrix)
+lda_airline_accuracy
+```
+
+### A9
+```{r QDA Model, results='hide', eval=FALSE}
+# Fitting quadratic discriminant analysis model using the training set
+qda_airline_fit <- qda(satisfaction ~ ., data = airline_train)
+qda_airline_fit
+
+# Making predictions on the testing set
+qda_airline_predictions <- predict(qda_airline_fit, airline_test)
+
+# Confusion matrix on the testing set
+qda_airline_confusion_matrix <- table(qda_airline_predictions$class, airline_test$satisfaction)
+qda_airline_confusion_matrix
+
+# Accuracy of the model
+qda_airline_accuracy <- sum(diag(qda_airline_confusion_matrix)) / sum(qda_airline_confusion_matrix)
+qda_airline_accuracy
+```
+
+### A10
+```{r KNN Model with k1, results='hide', warning=FALSE, message=FALSE, eval=FALSE}
+# Standardizing the airline data because predictors like Flight.Distance and other will have an influence in the model
+standardized_airline <- scale(airline[, -19])
+
+# Training and test sets using validation set approach
+set.seed(1)
+train <- sample(1:(length(satisfaction) / 2))
+test <- (-train)
+airline_train_X <- standardized_airline[train, ]
+airline_test_X <- standardized_airline[test, ]
+
+airline_train_Y <- satisfaction[-test]
+airline_test_Y <- satisfaction[test]
+
+# Making predictions with k=1
+set.seed(3)
+knn_airline_predictions <- knn(airline_train_X, airline_test_X, airline_train_Y, k = 1)
+
+# Confusion matrix on the testing set
+knn_airline_confusion_matrix <- table(knn_airline_predictions, airline_test_Y)
+knn_airline_confusion_matrix
+
+# Accuracy of the model
+knn_airline_accuracy <- mean(airline_test_Y == knn_airline_predictions)
+knn_airline_accuracy
+```
+
+### A11
+```{r KNN model with k5, results='hide', warning=FALSE, message=FALSE, eval=FALSE}
+# Making predictions with k=5
+set.seed(3)
+knn_airline_predictions_5 <- knn(airline_train_X, airline_test_X, airline_train_Y, k = 5)
+
+# Confusion matrix on the testing set
+knn_airline_confusion_matrix_5 <- table(knn_airline_predictions_5, airline_test_Y)
+knn_airline_confusion_matrix_5
+
+# Accuracy of the model
+knn_airline_accuracy_5 <- mean(airline_test_Y == knn_airline_predictions_5)
+knn_airline_accuracy_5
+```
+
+### A12
+```{r Classification Tree on Airline Data Set, results='hide', eval=FALSE}
+# Fitting Classification Tree
+tree_airline <- tree(satisfaction ~ ., airline)
+
+# Plot of classification tree
+plot(tree_airline) ; text(tree_airline, pretty = 0, cex = 0.6)
+
+# Summary
+summary(tree_airline)
+```
+
+### A13
+```{r Trained Classification Tree, eval=FALSE}
+set.seed(2)
+tree_train <- sample(1:(length(satisfaction) / 2))
+tree_test <- (-tree_train)
+
+# Creating training and testing set
+airline_tree_train <- airline[tree_train, ]
+airline_tree_test <- airline[tree_test, ]
+
+# Fitting tree model on the training set
+tree_airline <- tree(satisfaction ~ ., data = airline_tree_train)
+
+# Making predictions on the testing set
+tree_airline_predictions <- predict(tree_airline, airline_tree_test, type = "class")
+
+# Confusion matrix on the testing set
+tree_airline_confusion_matrix <- table(tree_airline_predictions, airline_tree_test$satisfaction)
+tree_airline_confusion_matrix
+
+# Accuracy of the tree model
+tree_airline_accuracy <- sum(diag(tree_airline_confusion_matrix)) / sum(tree_airline_confusion_matrix)
+tree_airline_accuracy
+```
+
+### A14
+```{r CV Prune Tree, eval=FALSE}
+set.seed(2)
+cv_tree_airline <- cv.tree(tree_airline, FUN = prune.misclass)
+
+plot(cv_tree_airline$size, cv_tree_airline$dev, type = "b") 
+```
+
+### A15
+```{r Bagging Model, eval=FALSE}
+# Creating bagged model
+set.seed(2)
+bag_airline <- randomForest(satisfaction ~ .,
+                            data = airline_train,
+                            mtry = 18,
+                            importance = TRUE)
+
+# Bagging predictions on testing set
+bag_airline_predictions <- predict(bag_airline, airline_test)
+
+# Confusion matrix on the testing set
+bag_airline_confusion_matrix <- table(bag_airline_predictions, airline_test$satisfaction)
+bag_airline_confusion_matrix
+
+# Accuracy of the tree model
+bag_airline_accuracy <- sum(diag(bag_airline_confusion_matrix)) / sum(bag_airline_confusion_matrix)
+bag_airline_accuracy
+```
+
+### A16
+```{r, eval=FALSE, results='hide'}
+# Creating random forests
+set.seed(2)
+rf_airline <- randomForest(satisfaction ~ ., data = airline_train, mtry = 3, importance = TRUE)
+
+# Random forests predictions on testing set
+rf_airline_predictions <- predict(rf_airline, airline_test)
+
+# Confusion matrix on the testing set
+rf_airline_confusion_matrix <- table(rf_airline_predictions, airline_test$satisfaction)
+rf_airline_confusion_matrix
+
+# Accuracy of the tree model
+rf_airline_accuracy <- sum(diag(rf_airline_confusion_matrix)) / sum(rf_airline_confusion_matrix)
+rf_airline_accuracy
+```
+
+
+# Appendix B
+
+### B1
+```{r Looking for outliers in nba_salaries, eval=FALSE}
+nba_outliers <- find_outliers(nba_salaries)
+nba_outliers
+```
+
+### B2
+```{r Least Squares, eval=FALSE}
+attach(nba_salaries)
+set.seed(2)
+
+# Training and test sets
+train <- sample(1:(length(Salary) / 2))
+train_data <- nba_salaries[train, ]
+test_data <- nba_salaries[-train, ]
+
+# Fitting least squares model
+lm_nba <- lm(Salary ~ ., data = train_data)
+
+# Making predictions on the test set
+lm_nba_pred <- predict(lm_nba, test_data)
+
+# MSE for least squares
+MSE_lm <- mean((lm_nba_pred - test_data$Salary)^2)
+MSE_lm
+```
+
+### B3
+```{r Best subset selection}
+set.seed(3)
+# Subset selection function
+predict.regsubsets <- function(object, newdata, id, ...) {
+    form <- as.formula(object$call[[2]])
+    mat <- model.matrix(form, newdata)
+    coefi <- coef(object, id = id)
+    xvars <- names(coefi)
+    mat[, xvars] %*% coefi
+}
+
+k = 5
+
+folds <- sample(1:k, nrow(nba_salaries), replace = TRUE)
+
+cv_errors <- matrix(NA, k, 18, dimnames = list(NULL, paste(1:18)))
+
+for (j in 1:k) {
+    best.fit <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18)
+    for (i in 1:18) {
+        pred <- predict(best.fit, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+mean_cv_errors <- apply(cv_errors, 2, mean)
+mean_cv_errors
+```
+
+### B4
+```{r variable selection in best subset}
+# To see which variables are selected
+summary(best.fit)
+```
+
+### B5
+```{r Forward Selection}
+for (j in 1:k) {
+    best.forward <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18, method = "forward")
+    for (i in 1:18) {
+        pred <- predict(best.forward, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+forward_mean_cv_errors <- apply(cv_errors, 2, mean)
+forward_mean_cv_errors
+```
+
+### B6
+```{r Backward Selection}
+for (j in 1:k) {
+    best.backward <- regsubsets(Salary ~ ., data = nba_salaries[folds != j, ], nvmax = 18, method = "backward")
+    for (i in 1:18) {
+        pred <- predict(best.backward, nba_salaries[folds == j, ], id = i)
+        cv_errors[j, i] <- mean((nba_salaries$Salary[folds == j] - pred)^2)
+    }
+}
+
+backward_mean_cv_errors <- apply(cv_errors, 2, mean)
+backward_mean_cv_errors
+```
+
+### B7
+```{r Ridge regression}
+# Train and test matrix
+train.mat <- model.matrix(Salary ~ ., data = train_data)
+test.mat <- model.matrix(Salary ~ ., data = test_data)
+
+# Lambda grid
+grid <- 10 ^ seq(10, -2, length = 60)
+
+# Fitting ridge on training set
+fit.ridge <- glmnet(train.mat, train_data$Salary, alpha = 0, lambda = grid, thresh = 1e-12)
+cv.ridge <- cv.glmnet(train.mat, train_data$Salary, alpha = 0, lambda = grid, thresh = 1e-12)
+
+# Choosing best lambda value
+bestlam.ridge <- cv.ridge$lambda.min
+bestlam.ridge
+
+# Prediction using ridge on test matrix
+pred.ridge <- predict(fit.ridge, s = bestlam.ridge, newx = test.mat)
+
+# MSE for ridge
+MSE_ridge <- mean((pred.ridge - test_data$Salary)^2)
+MSE_ridge
+```
+
+### B8
+```{r Lasso Regression}
+# Fitting lasso on training set
+fit.lasso <- glmnet(train.mat, train_data$Salary, alpha = 1, lambda = grid, thresh = 1e-12)
+cv.lasso <- cv.glmnet(train.mat, train_data$Salary, alpha = 1, lambda = grid, thresh = 1e-12)
+
+# Choosing best lambda value
+bestlam.lasso <- cv.lasso$lambda.min
+bestlam.lasso
+
+# Prediction using lasso on test matrix
+pred.lasso <- predict(fit.lasso, s = bestlam.lasso, newx = test.mat)
+
+# MSE for lasso
+MSE_lasso <- mean((pred.lasso - test_data$Salary)^2)
+MSE_lasso
+```
+
+### B9
+```{r Lasso seven predictors}
+predict(fit.lasso, s = bestlam.lasso, type = "coefficients")
+```
+
+### B10
+```{r Partial Least Squares}
+# Fitting pls on training set
+fit.pls <- plsr(Salary ~ ., data = train_data, scale = TRUE, validation = "CV")
+
+# Looking at how many segments were used
+fit.pls
+
+# Prediction using test set
+pred.pls <- predict(fit.pls, test_data, ncomp = 10)
+
+# MSE for PLS
+MSE_pls <- mean((pred.pls - test_data$Salary)^2)
+MSE_pls
+```
+
+### B11
+```{r Regression Tree}
+# Regression tree model on training set
+tree_nba <- tree(Salary ~ ., data = train_data)
+
+summary(tree_nba)
+```
+
+### B12
+```{r Tree regression MSE}
+# Test MSE
+tree.pred <- predict(tree_nba, test_data)
+MSE_tree <- mean((tree.pred = test_data$Salary)^2)
+MSE_tree
+```
+
+### B13
+```{r CV on regression tree, eval=FALSE}
+# CV on regression tree
+cv_tree_nba <- cv.tree(tree_nba)
+```
+
+### B14
+```{r Prune tree test MSE}
+# Test MSE
+tree.pred <- predict(prune_nba, test_data)
+MSE_prune <- mean((tree.pred - test_data$Salary)^2)
+MSE_prune
+```
+
+### B15
+```{r NBA Bagging}
+# Fitting bagging on training set
+bag_nba <- randomForest(Salary ~ ., data = train_data, mtry = 18, ntree = 500, importance = TRUE)
+
+# Test MSE
+yhat.bag <- predict(bag_nba, newdata = test_data)
+MSE_bag <- mean((yhat.bag - test_data$Salary)^2)
+MSE_bag
+```
+
+### B16
+```{r NBA Random Forests}
+# Random Forests on training set
+rf_nba <- randomForest(Salary ~ ., data = train_data, mtry = 18, ntree = 500, importance = TRUE)
+
+# Test MSE
+yhat.rf <- predict(rf_nba, newdata = test_data)
+MSE_rf <- mean((yhat.rf - test_data$Salary)^2)
+MSE_rf
+```
+
+### B17
+```{r NBA Boosted regression tree}
+# Boosted regression tree
+boost_nba <- gbm(Salary ~ ., data = train_data, distribution = "gaussian", n.trees = 5000, interaction.depth = 4)
+
+# Test MSE
+yhat.boost <- predict(boost_nba, newdata = test_data, n.trees = 500)
+MSE_boost <- mean((yhat.boost - test_data$Salary)^2)
+MSE_boost
+```
+
+### B18
+```{r PCR Model, eval=FALSE}
+set.seed(2)
+
+# PCR on training set
+pcr.fit <- pcr(Salary ~ ., data = train_data, scale = TRUE, validation = "CV")
+
+# PCR Validation plot
+validationplot(pcr.fit, val.type = "MSEP")
+```
+
+### B19
+```{r PCR Test MSE}
+# Test MSE
+pred.pcr <- predict(pcr.fit, test_data, ncomp = 13)
+MSE_pcr <- mean((pred.pcr - test_data$Salary)^2)
+MSE_pcr
+```
+
+
